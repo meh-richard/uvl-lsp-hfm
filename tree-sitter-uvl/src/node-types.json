@@ -38,6 +38,10 @@
         {
           "type": "unary_expr",
           "named": true
+        },
+        {
+          "type": "versioned_ref",
+          "named": true
         }
       ]
     }
@@ -190,6 +194,10 @@
           {
             "type": "unary_expr",
             "named": true
+          },
+          {
+            "type": "versioned_ref",
+            "named": true
           }
         ]
       },
@@ -277,6 +285,10 @@
           },
           {
             "type": "unary_expr",
+            "named": true
+          },
+          {
+            "type": "versioned_ref",
             "named": true
           }
         ]
@@ -455,6 +467,10 @@
         {
           "type": "unary_expr",
           "named": true
+        },
+        {
+          "type": "versioned_ref",
+          "named": true
         }
       ]
     }
@@ -502,6 +518,10 @@
           },
           {
             "type": "unary_expr",
+            "named": true
+          },
+          {
+            "type": "versioned_ref",
             "named": true
           }
         ]
@@ -657,6 +677,10 @@
         {
           "type": "unary_expr",
           "named": true
+        },
+        {
+          "type": "versioned_ref",
+          "named": true
         }
       ]
     }
@@ -723,6 +747,10 @@
       "types": [
         {
           "type": "blk",
+          "named": true
+        },
+        {
+          "type": "versions_blk",
           "named": true
         }
       ]
@@ -823,6 +851,10 @@
           {
             "type": "unary_expr",
             "named": true
+          },
+          {
+            "type": "versioned_ref",
+            "named": true
           }
         ]
       },
@@ -867,6 +899,192 @@
         },
         {
           "type": "vector",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "version",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "name",
+            "named": true
+          }
+        ]
+      },
+      "number": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "version_number",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "version_feature",
+    "named": true,
+    "fields": {
+      "feature": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "path",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "version_line",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "version_line",
+    "named": true,
+    "fields": {
+      "from": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "version",
+            "named": true
+          }
+        ]
+      },
+      "version": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "version",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "versioned_ref",
+    "named": true,
+    "fields": {
+      "begin": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "version",
+            "named": true
+          }
+        ]
+      },
+      "condition": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "?",
+            "named": false
+          }
+        ]
+      },
+      "end": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "version",
+            "named": true
+          }
+        ]
+      },
+      "op": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          }
+        ]
+      },
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "path",
+            "named": true
+          }
+        ]
+      },
+      "version": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "version",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "versions_blk",
+    "named": true,
+    "fields": {
+      "header": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "versions",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "version_feature",
           "named": true
         }
       ]
@@ -925,7 +1143,15 @@
     "named": false
   },
   {
+    "type": ":",
+    "named": false
+  },
+  {
     "type": "<",
+    "named": false
+  },
+  {
+    "type": "<=",
     "named": false
   },
   {
@@ -942,6 +1168,14 @@
   },
   {
     "type": ">",
+    "named": false
+  },
+  {
+    "type": ">=",
+    "named": false
+  },
+  {
+    "type": "?",
     "named": false
   },
   {
@@ -1017,6 +1251,10 @@
     "named": true
   },
   {
+    "type": "from",
+    "named": false
+  },
+  {
     "type": "group-cardinality",
     "named": false
   },
@@ -1071,6 +1309,18 @@
   {
     "type": "type-constraints",
     "named": false
+  },
+  {
+    "type": "version_number",
+    "named": true
+  },
+  {
+    "type": "versioning",
+    "named": false
+  },
+  {
+    "type": "versions",
+    "named": true
   },
   {
     "type": "{",

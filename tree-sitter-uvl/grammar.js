@@ -35,7 +35,7 @@ module.exports = grammar({
     ],
     word: $ => $.name,
     rules: {
-        source_file: $ => repeat($.blk),
+        source_file: $ => repeat(choice($.blk, $.versions_blk)),
         blk: $ => seq(
             field("header", $._header),
             optional(seq("cardinality", field("cardinality", $.cardinality))),
@@ -122,7 +122,38 @@ module.exports = grammar({
             $.binary_expr,
             $.function,
             $.string,
+            $.versioned_ref,
         ),
+        versions_blk: $ => seq(
+            field("header", $.versions),
+            $._newline,
+            optional(seq($._indent, repeat($.version_feature), $._dedent))
+        ),
+        version_feature: $ => seq(
+            field("feature", $.path),
+            $._newline,
+            optional(seq($._indent, repeat($.version_line), $._dedent))
+        ),
+        version_line: $ => seq(
+            optional(seq("from", field("from", $.version), ":")),
+            field("version", $.version),
+            repeat(seq(",", field("version", $.version))),
+            $._newline
+        ),
+        versioned_ref: $ => seq(
+            optional(field("condition", "?")),
+            field("path", $.path),
+            "[",
+            choice(
+                seq(field("op", choice(">", ">=", "<", "<=")), field("version", $.version)),
+                seq(field("begin", $.version), field("op", "-"), field("end", $.version)),
+                field("version", $.version),
+            ),
+            "]"
+        ),
+        version: $ => seq(optional(field("name", $.name)), field("number", $.version_number)),
+        version_number: _ => /v?[0-9]+(\.[0-9]+)*/,
+        versions: _ => "versions",
         unary_expr: $ => choice(
             prec(PREC.not, seq(
                 field("op", '!'),
@@ -202,6 +233,7 @@ module.exports = grammar({
             'type-constraints',
             'string-constraints',
             'numeric-constraints',
+            'versioning',
             '*'
         ),
         type: $ => choice(

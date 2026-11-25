@@ -1,0 +1,898 @@
+================================================================================
+Versions block with development lines
+================================================================================
+
+features
+	TurtleBot
+		mandatory
+			Engine
+versions
+	TurtleBot
+		1.0, 1.1
+		from 1.0: 2.0, 2.1
+	Engine
+		1.0, 1.1, Create 1.2
+		from 1.1: Kobuki 1.0
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (blk
+    header: (features)
+    child: (blk
+      header: (name)
+      child: (blk
+        header: (group_mode)
+        child: (blk
+          header: (name)))))
+  (versions_blk
+    header: (versions)
+    (version_feature
+      feature: (path
+        (name))
+      (version_line
+        version: (version
+          number: (version_number))
+        version: (version
+          number: (version_number)))
+      (version_line
+        from: (version
+          number: (version_number))
+        version: (version
+          number: (version_number))
+        version: (version
+          number: (version_number))))
+    (version_feature
+      feature: (path
+        (name))
+      (version_line
+        version: (version
+          number: (version_number))
+        version: (version
+          number: (version_number))
+        version: (version
+          name: (name)
+          number: (version_number)))
+      (version_line
+        from: (version
+          number: (version_number))
+        version: (version
+          name: (name)
+          number: (version_number))))))
+
+================================================================================
+Version spellings
+================================================================================
+
+versions
+	A
+		1, 2, 3
+	B
+		1.0, 2.0, 3.0
+	C
+		1.0.0, 2.0.0, 3.0.0
+	D
+		Version 1, Version 1.0, Version 1.0.0
+		from Version 1: 1.1, Beta 2
+	E
+		v1, v1.0, v1.1, v2.0.0
+		from v1.0: Beta v1.0.1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (versions_blk
+    header: (versions)
+    (version_feature
+      feature: (path
+        (name))
+      (version_line
+        version: (version
+          number: (version_number))
+        version: (version
+          number: (version_number))
+        version: (version
+          number: (version_number))))
+    (version_feature
+      feature: (path
+        (name))
+      (version_line
+        version: (version
+          number: (version_number))
+        version: (version
+          number: (version_number))
+        version: (version
+          number: (version_number))))
+    (version_feature
+      feature: (path
+        (name))
+      (version_line
+        version: (version
+          number: (version_number))
+        version: (version
+          number: (version_number))
+        version: (version
+          number: (version_number))))
+    (version_feature
+      feature: (path
+        (name))
+      (version_line
+        version: (version
+          name: (name)
+          number: (version_number))
+        version: (version
+          name: (name)
+          number: (version_number))
+        version: (version
+          name: (name)
+          number: (version_number)))
+      (version_line
+        from: (version
+          name: (name)
+          number: (version_number))
+        version: (version
+          number: (version_number))
+        version: (version
+          name: (name)
+          number: (version_number))))
+    (version_feature
+      feature: (path
+        (name))
+      (version_line
+        version: (version
+          number: (version_number))
+        version: (version
+          number: (version_number))
+        version: (version
+          number: (version_number))
+        version: (version
+          number: (version_number)))
+      (version_line
+        from: (version
+          number: (version_number))
+        version: (version
+          name: (name)
+          number: (version_number))))))
+
+================================================================================
+Version constraints
+================================================================================
+
+constraints
+	A [3]
+	A [1.0]
+	A [> 1.0]
+	A [>= 1.0.0]
+	A [< Version 2]
+	A [<= 2.0]
+	A [1 - 3]
+	A [1.0.0 - 2.0.0]
+	A [v1.0 - v2.0.0]
+	A [1.1 - Kobuki 1.0]
+	A [1.0-2.0]
+	A [1.0] => ?B [>= 2.0]
+	s.A [1.0] => ?s.B [1.0 - 2.0] & ?C [Version 1]
+	!?B [1.0] | A
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (blk
+    header: (constraints)
+    child: (blk
+      header: (constraint
+        (versioned_ref
+          path: (path
+            (name))
+          version: (version
+            number: (version_number)))))
+    child: (blk
+      header: (constraint
+        (versioned_ref
+          path: (path
+            (name))
+          version: (version
+            number: (version_number)))))
+    child: (blk
+      header: (constraint
+        (versioned_ref
+          path: (path
+            (name))
+          version: (version
+            number: (version_number)))))
+    child: (blk
+      header: (constraint
+        (versioned_ref
+          path: (path
+            (name))
+          version: (version
+            number: (version_number)))))
+    child: (blk
+      header: (constraint
+        (versioned_ref
+          path: (path
+            (name))
+          version: (version
+            name: (name)
+            number: (version_number)))))
+    child: (blk
+      header: (constraint
+        (versioned_ref
+          path: (path
+            (name))
+          version: (version
+            number: (version_number)))))
+    child: (blk
+      header: (constraint
+        (versioned_ref
+          path: (path
+            (name))
+          begin: (version
+            number: (version_number))
+          end: (version
+            number: (version_number)))))
+    child: (blk
+      header: (constraint
+        (versioned_ref
+          path: (path
+            (name))
+          begin: (version
+            number: (version_number))
+          end: (version
+            number: (version_number)))))
+    child: (blk
+      header: (constraint
+        (versioned_ref
+          path: (path
+            (name))
+          begin: (version
+            number: (version_number))
+          end: (version
+            number: (version_number)))))
+    child: (blk
+      header: (constraint
+        (versioned_ref
+          path: (path
+            (name))
+          begin: (version
+            number: (version_number))
+          end: (version
+            name: (name)
+            number: (version_number)))))
+    child: (blk
+      header: (constraint
+        (versioned_ref
+          path: (path
+            (name))
+          begin: (version
+            number: (version_number))
+          end: (version
+            number: (version_number)))))
+    child: (blk
+      header: (constraint
+        (binary_expr
+          lhs: (versioned_ref
+            path: (path
+              (name))
+            version: (version
+              number: (version_number)))
+          rhs: (versioned_ref
+            path: (path
+              (name))
+            version: (version
+              number: (version_number))))))
+    child: (blk
+      header: (constraint
+        (binary_expr
+          lhs: (versioned_ref
+            path: (path
+              (name)
+              (name))
+            version: (version
+              number: (version_number)))
+          rhs: (binary_expr
+            lhs: (versioned_ref
+              path: (path
+                (name)
+                (name))
+              begin: (version
+                number: (version_number))
+              end: (version
+                number: (version_number)))
+            rhs: (versioned_ref
+              path: (path
+                (name))
+              version: (version
+                name: (name)
+                number: (version_number)))))))
+    child: (blk
+      header: (constraint
+        (binary_expr
+          lhs: (unary_expr
+            lhs: (versioned_ref
+              path: (path
+                (name))
+              version: (version
+                number: (version_number))))
+          rhs: (path
+            (name)))))))
+
+================================================================================
+Keywords stay feature names
+================================================================================
+
+features
+	from
+		optional
+			versions
+versions
+	from
+		1.0
+constraints
+	from => versions
+	from [1.0] => versions
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (blk
+    (features)
+    (blk
+      (name)
+      (blk
+        (group_mode)
+        (blk
+          (name)))))
+  (versions_blk
+    (versions)
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number)))))
+  (blk
+    (constraints)
+    (blk
+      (constraint
+        (binary_expr
+          (path
+            (name))
+          (path
+            (name)))))
+    (blk
+      (constraint
+        (binary_expr
+          (versioned_ref
+            (path
+              (name))
+            (version
+              (version_number)))
+          (path
+            (name)))))))
+
+================================================================================
+Language level versioning
+================================================================================
+
+include
+	Boolean.versioning
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (blk
+    (include)
+    (blk
+      (lang_lvl
+        (major_lvl)
+        (minor_lvl)))))
+
+================================================================================
+Level names are reserved, versioning like Arithmetic
+================================================================================
+
+features
+	Root
+		optional
+			Arithmetic
+			versioning
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (blk
+    (features)
+    (blk
+      (name)
+      (blk
+        (group_mode)
+        (blk
+          (lang_lvl
+            (major_lvl)))
+        (blk
+          (lang_lvl
+            (minor_lvl)))))))
+
+================================================================================
+TurtleBot from Seidl et al. 2014 (Figure 1, constraints from section 4)
+================================================================================
+
+features
+	TurtleBot
+		mandatory
+			Engine
+			Movement
+				alternative
+					Keyboard
+					Gamepad
+					Autonomous
+		optional
+			Webservice
+			Detection
+				or
+					Bump
+					Infrared
+					Ultrasound
+
+versions
+	TurtleBot
+		1.0, 1.1
+		from 1.0: 2.0, 2.1
+	Engine
+		1.0, 1.1, Create 1.2
+		from 1.1: Kobuki 1.0
+	Movement
+		1.0, 1.1, 1.2, 2.0
+	Webservice
+		1.0, 1.1
+	Detection
+		1.0, 1.1
+	Keyboard
+		1.0
+	Gamepad
+		1.0, 2.0
+	Autonomous
+		1.0, 1.1, 2.0
+	Bump
+		1.0
+	Infrared
+		1.0, 2.0, 2.2
+	Ultrasound
+		0.8, 0.9, 1.0
+
+constraints
+	TurtleBot [>= 2.0] => ?Webservice [>= 1.1]
+	TurtleBot [>= 2.0] => Engine [>= Kobuki 1.0]
+	Autonomous => Detection
+	Keyboard | Gamepad => Webservice
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (blk
+    (features)
+    (blk
+      (name)
+      (blk
+        (group_mode)
+        (blk
+          (name))
+        (blk
+          (name)
+          (blk
+            (group_mode)
+            (blk
+              (name))
+            (blk
+              (name))
+            (blk
+              (name)))))
+      (blk
+        (group_mode)
+        (blk
+          (name))
+        (blk
+          (name)
+          (blk
+            (group_mode)
+            (blk
+              (name))
+            (blk
+              (name))
+            (blk
+              (name)))))))
+  (versions_blk
+    (versions)
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number)))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number))
+        (version
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number))
+        (version
+          (name)
+          (version_number)))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (name)
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number))
+        (version
+          (version_number))
+        (version
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number))
+        (version
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number))
+        (version
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number))
+        (version
+          (version_number)))))
+  (blk
+    (constraints)
+    (blk
+      (constraint
+        (binary_expr
+          (versioned_ref
+            (path
+              (name))
+            (version
+              (version_number)))
+          (versioned_ref
+            (path
+              (name))
+            (version
+              (version_number))))))
+    (blk
+      (constraint
+        (binary_expr
+          (versioned_ref
+            (path
+              (name))
+            (version
+              (version_number)))
+          (versioned_ref
+            (path
+              (name))
+            (version
+              (name)
+              (version_number))))))
+    (blk
+      (constraint
+        (binary_expr
+          (path
+            (name))
+          (path
+            (name)))))
+    (blk
+      (constraint
+        (binary_expr
+          (binary_expr
+            (path
+              (name))
+            (path
+              (name)))
+          (path
+            (name)))))))
+
+================================================================================
+A word without a number is an error
+================================================================================
+
+versions
+	A
+		Mars, 1.0
+	B
+		1.0
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (versions_blk
+    (versions)
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (name)
+          (ERROR)
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))))))
+
+================================================================================
+Two words are an error
+================================================================================
+
+versions
+	A
+		Kobuki Turbo 1.0, 1.1
+	B
+		1.0
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (versions_blk
+    (versions)
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (name)
+          (ERROR
+            (name))
+          (version_number))
+        (version
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))))))
+
+================================================================================
+Quoted versions are an error
+================================================================================
+
+versions
+	A
+		"Version 1", 1.0
+	B
+		1.0
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (ERROR
+    (versions_blk
+      (versions)
+      (ERROR
+        (path
+          (name))
+        (name)
+        (version_number)))
+    (blk
+      (name)
+      (blk
+        (constraint
+          (number))))))
+
+================================================================================
+Digits followed by letters are an error
+================================================================================
+
+versions
+	A
+		1, 2a
+	B
+		1.0
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (versions_blk
+    (versions)
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number))
+        (MISSING _newline))
+      (ERROR
+        (name)))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))))))
+
+================================================================================
+Missing versions after predecessor stay local
+================================================================================
+
+versions
+	A
+		1, 2
+		from 1:
+	B
+		1.0, 2.0
+constraints
+	A => B
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (versions_blk
+    (versions)
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number)))
+      (ERROR
+        (version
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number)))))
+  (blk
+    (constraints)
+    (blk
+      (constraint
+        (binary_expr
+          (path
+            (name))
+          (path
+            (name)))))))
+
+================================================================================
+Trailing comma stays local
+================================================================================
+
+versions
+	A
+		1, 2,
+	B
+		1.0, 2.0
+constraints
+	A => B
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (versions_blk
+    (versions)
+    (version_feature
+      (path
+        (name))
+      (ERROR
+        (version
+          (version_number))
+        (version
+          (version_number))))
+    (version_feature
+      (path
+        (name))
+      (version_line
+        (version
+          (version_number))
+        (version
+          (version_number)))))
+  (blk
+    (constraints)
+    (blk
+      (constraint
+        (binary_expr
+          (path
+            (name))
+          (path
+            (name)))))))
+
+================================================================================
+Half-typed version constraint
+================================================================================
+
+constraints
+	A [
+	B => C
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (blk
+    (constraints)
+    (blk
+      (constraint
+        (binary_expr
+          (path
+            (name))
+          (ERROR
+            (name))
+          (path
+            (name)))))))
