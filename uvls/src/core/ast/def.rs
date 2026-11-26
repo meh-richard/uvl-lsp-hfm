@@ -240,6 +240,19 @@ pub enum VersionRestriction {
     Range(SymbolSpan, SymbolSpan),
 }
 
+impl VersionRestriction {
+    pub fn versions(&self) -> Vec<&SymbolSpan> {
+        match self {
+            Self::Exact(v)
+            | Self::Greater(v)
+            | Self::GreaterEq(v)
+            | Self::Less(v)
+            | Self::LessEq(v) => vec![v],
+            Self::Range(begin, end) => vec![begin, end],
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Constraint {
     Version {

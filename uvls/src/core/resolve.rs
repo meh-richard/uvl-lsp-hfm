@@ -296,6 +296,62 @@ fn resolve_bool_ref(
     }
 }
 
+fn resolve_version_restriction(
+    ctx: &TypeResolveContext,
+    file: FileID,
+    feature: Symbol,
+    restriction: &VersionRestriction,
+    err: &mut ErrorsAcc,
+    ref_map: &RefMap,
+) {
+    let Some(tgt) = ref_map.get(&feature) else {
+        return;
+    };
+    let tgt_file = ctx.file(tgt.file);
+    let Some(name) = tgt_file.name(tgt.sym) else {
+        return;
+    };
+    let known = tgt_file.versions_of(name);
+    if known.is_empty() {
+        err.sym(feature, file, 30, "feature has no versions");
+        return;
+    }
+    let mut found = Vec::new();
+    for version in restriction.versions() {
+        match known
+            .iter()
+            .find(|&&i| tgt_file.versions()[i].name.name == version.name)
+        {
+            Some(&i) => found.push(i),
+            None => err.span(
+                version.span.clone(),
+                file,
+                30,
+                format!(
+                    "unknown version {}, expected one of {}",
+                    version.name,
+                    known
+                        .iter()
+                        .map(|&i| tgt_file.versions()[i].name.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            ),
+        }
+    }
+    if let (VersionRestriction::Range(begin, end), [first, last]) = (restriction, found.as_slice())
+    {
+        if !tgt_file.version_precedes(*first, *last) {
+            err.span(
+                end.span.clone(),
+                file,
+                30,
+                format!("{} is not a successor of {}", end.name, begin.name),
+            );
+        }
+    }
+}
+
 fn resolve_constraint(
     ctx: &TypeResolveContext,
     file: FileID,
@@ -305,7 +361,14 @@ fn resolve_constraint(
 ) {
     match &constraint.content {
         Constraint::Ref(sym) => resolve_bool_ref(ctx, file, *sym, err, ref_map),
-        Constraint::Version { feature, .. } => resolve_bool_ref(ctx, file, *feature, err, ref_map),
+        Constraint::Version {
+            feature,
+            restriction,
+            ..
+        } => {
+            resolve_bool_ref(ctx, file, *feature, err, ref_map);
+            resolve_version_restriction(ctx, file, *feature, restriction, err, ref_map);
+        }
         Constraint::Logic { lhs, rhs, .. } => {
             stacker::maybe_grow(32 * 1024, 1024 * 1024, || {
                 resolve_constraint(ctx, file, lhs, err, ref_map)

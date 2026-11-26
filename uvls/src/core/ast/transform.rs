@@ -1690,6 +1690,27 @@ mod tests {
     }
 
     #[test]
+    fn version_order() {
+        let doc = parse(
+            "versions\n\tTurtleBot\n\t\t1.0, 1.1\n\t\tfrom 1.0: 2.0, 2.1\n\tEngine\n\t\t1.0, 1.1, Create 1.2\n\t\tfrom 1.1: Kobuki 1.0\n",
+        );
+        let index = |feature: &str, name: &str| {
+            doc.versions_of(feature.into())
+                .into_iter()
+                .find(|&i| doc.versions()[i].name.name.as_str() == name)
+                .unwrap()
+        };
+        assert_eq!(doc.versions_of("TurtleBot".into()).len(), 4);
+        assert_eq!(doc.versions_of("Engine".into()).len(), 4);
+        assert!(doc.versions_of("Movement".into()).is_empty());
+        assert!(doc.version_precedes(index("TurtleBot", "1.0"), index("TurtleBot", "2.1")));
+        assert!(doc.version_precedes(index("TurtleBot", "2.0"), index("TurtleBot", "2.0")));
+        assert!(!doc.version_precedes(index("TurtleBot", "1.1"), index("TurtleBot", "2.1")));
+        assert!(!doc.version_precedes(index("TurtleBot", "2.1"), index("TurtleBot", "1.0")));
+        assert!(!doc.version_precedes(index("Engine", "Create 1.2"), index("Engine", "Kobuki 1.0")));
+    }
+
+    #[test]
     fn incomplete_lines_are_skipped() {
         let doc = parse("versions\n\tA\n\t\t1, 2\n\t\tfrom 1:\n\tB\n\t\t1.0\n");
         assert_eq!(

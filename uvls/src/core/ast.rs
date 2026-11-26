@@ -348,6 +348,21 @@ impl AstDocument {
     pub fn versions(&self) -> &[Version] {
         &self.ast.versions
     }
+    pub fn versions_of(&self, feature: Ustr) -> Vec<usize> {
+        (0..self.ast.versions.len())
+            .filter(|&i| self.path(self.ast.versions[i].feature) == [feature])
+            .collect()
+    }
+    pub fn version_precedes(&self, a: usize, b: usize) -> bool {
+        let mut current = Some(b);
+        while let Some(i) = current {
+            if i == a {
+                return true;
+            }
+            current = self.ast.versions[i].pred;
+        }
+        false
+    }
 
     pub fn imports(&self) -> &[Import] {
         &self.ast.import
