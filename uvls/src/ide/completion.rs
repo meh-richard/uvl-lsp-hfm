@@ -1119,7 +1119,12 @@ fn add_lang_lvl_type(query: &str, top: &mut TopN<CompletionOpt>, w: f32) {
 }
 
 fn add_lang_lvl_boolean(query: &str, top: &mut TopN<CompletionOpt>, w: f32) {
-    add_keywords(query, top, w, ["group-cardinality".into(), "*".into()]);
+    add_keywords(
+        query,
+        top,
+        w,
+        ["group-cardinality".into(), "versioning".into(), "*".into()],
+    );
 }
 
 fn add_logic_op(query: &str, top: &mut TopN<CompletionOpt>, w: f32) {
@@ -1793,6 +1798,16 @@ mod tests {
             .into_sorted_vec()
             .iter()
             .any(|opt| opt.label.starts_with("versions")));
+    }
+
+    #[test]
+    fn versioning_level_is_offered() {
+        let mut top = TopN::new(10);
+        add_lang_lvl_boolean("", &mut top, 1.0);
+        assert!(top
+            .into_sorted_vec()
+            .iter()
+            .any(|opt| opt.label == "versioning"));
     }
 
     #[test]

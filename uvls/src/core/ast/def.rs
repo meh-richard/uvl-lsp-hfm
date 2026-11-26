@@ -92,6 +92,7 @@ pub enum LanguageLevelArithmetic {
 pub enum LanguageLevelBoolean {
     Any,
     GroupCardinality,
+    Versioning,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum LanguageLevelType {

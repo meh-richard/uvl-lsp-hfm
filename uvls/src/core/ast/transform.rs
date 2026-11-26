@@ -324,7 +324,7 @@ fn opt_arithmetic_minor(state: &mut VisitorState) -> Option<LanguageLevelArithme
         "*" => Some(LanguageLevelArithmetic::Any),
         "feature-cardinality" => Some(LanguageLevelArithmetic::FeatureCardinality),
         "aggregate-function" => Some(LanguageLevelArithmetic::Aggregate),
-        "group-cardinality" | "string-constraints" | "numeric-constraints" => {
+        "group-cardinality" | "string-constraints" | "numeric-constraints" | "versioning" => {
             state.push_error(30, "not allowed under Arithmetic");
             None
         }
@@ -338,6 +338,7 @@ fn opt_boolean_minor(state: &mut VisitorState) -> Option<LanguageLevelBoolean> {
     match state.kind() {
         "*" => Some(LanguageLevelBoolean::Any),
         "group-cardinality" => Some(LanguageLevelBoolean::GroupCardinality),
+        "versioning" => Some(LanguageLevelBoolean::Versioning),
         "feature-cardinality"
         | "aggregate-function"
         | "string-constraints"
@@ -356,7 +357,7 @@ fn opt_type_minor(state: &mut VisitorState) -> Option<LanguageLevelType> {
         "*" => Some(LanguageLevelType::Any),
         "numeric-constraints" => Some(LanguageLevelType::NumericConstraints),
         "string-constraints" => Some(LanguageLevelType::StringConstraints),
-        "feature-cardinality" | "aggregate-function" | "group-cardinality" => {
+        "feature-cardinality" | "aggregate-function" | "group-cardinality" | "versioning" => {
             state.push_error(30, "not allowed under Type");
             None
         }
@@ -974,6 +975,10 @@ fn visit_version_feature(state: &mut VisitorState, seen: &mut Vec<Vec<ustr::Ustr
 }
 
 fn visit_versions(state: &mut VisitorState) {
+    check_langlvls(
+        state,
+        LanguageLevel::Boolean(vec![LanguageLevelBoolean::Versioning]),
+    );
     let mut seen = Vec::new();
     loop {
         if state.kind() == "version_feature" {
@@ -999,6 +1004,10 @@ fn opt_constraint(state: &mut VisitorState) -> Option<ConstraintDecl> {
             if node.has_error() {
                 return None;
             }
+            check_langlvls(
+                state,
+                LanguageLevel::Boolean(vec![LanguageLevelBoolean::Versioning]),
+            );
             let path = visit_children(state, |state| {
                 state.goto_field("path");
                 opt_path(state)
@@ -1713,6 +1722,24 @@ mod tests {
             .map(|v| v.from.clone().map(|span| &source[span]))
             .collect();
         assert_eq!(from, vec![None, None, Some("1.0"), None]);
+    }
+
+    #[test]
+    fn language_level() {
+        let body = "versions\n\tA\n\t\t1.0\nconstraints\n\tA [1.0]\n";
+        assert!(errors(body).is_empty());
+        assert!(errors(&format!("include\n\tBoolean.versioning\n{body}")).is_empty());
+        assert!(errors(&format!("include\n\tBoolean.*\n{body}")).is_empty());
+        let missing =
+            "Operation does not correspond includes. Please include Boolean([Versioning])";
+        assert_eq!(
+            errors(&format!("include\n\tBoolean.group-cardinality\n{body}")),
+            vec![(2, missing.into()), (6, missing.into())]
+        );
+        assert_eq!(
+            errors("include\n\tArithmetic.versioning\n"),
+            vec![(1, "not allowed under Arithmetic".into())]
+        );
     }
 
     #[test]

@@ -301,6 +301,7 @@ pub fn add_language_level(
                                 "FeatureCardinality" => ".feature-cardinality",
                                 "Aggregate" => ".aggregate-function",
                                 "GroupCardinality" => ".group-cardinality",
+                                "Versioning" => ".versioning",
                                 "NumericConstraints" => ".numeric-constraints",
                                 "StringConstraints" => ".string-constraints",
                                 _ => "",
