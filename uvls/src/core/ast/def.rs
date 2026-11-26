@@ -224,7 +224,29 @@ pub enum EquationOP {
 }
 
 #[derive(Clone, Debug)]
+pub struct Version {
+    pub feature: Symbol,
+    pub name: SymbolSpan,
+    pub pred: Option<usize>,
+}
+
+#[derive(Clone, Debug)]
+pub enum VersionRestriction {
+    Exact(SymbolSpan),
+    Greater(SymbolSpan),
+    GreaterEq(SymbolSpan),
+    Less(SymbolSpan),
+    LessEq(SymbolSpan),
+    Range(SymbolSpan, SymbolSpan),
+}
+
+#[derive(Clone, Debug)]
 pub enum Constraint {
+    Version {
+        feature: Symbol,
+        restriction: VersionRestriction,
+        conditional: bool,
+    },
     Constant(bool),
     Equation {
         op: EquationOP,
@@ -244,6 +266,24 @@ pub enum Constraint {
 pub struct ConstraintDecl {
     pub content: Constraint,
     pub span: Span,
+}
+
+impl ConstraintDecl {
+    pub fn has_version(&self) -> bool {
+        let mut stack = vec![self];
+        while let Some(constraint) = stack.pop() {
+            match &constraint.content {
+                Constraint::Version { .. } => return true,
+                Constraint::Logic { lhs, rhs, .. } => {
+                    stack.push(lhs);
+                    stack.push(rhs);
+                }
+                Constraint::Not(lhs) => stack.push(lhs),
+                _ => {}
+            }
+        }
+        false
+    }
 }
 
 #[derive(Clone, Debug)]

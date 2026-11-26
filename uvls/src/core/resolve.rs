@@ -192,6 +192,20 @@ pub fn resolve_file(file: FileID, fs: &FileSystem, err: &mut ErrorsAcc) -> RefMa
     for i in file_data.constraints() {
         resolve_constraint(&ctx, file, i, err, &mut ref_map);
     }
+    let mut version_features: Vec<Symbol> =
+        file_data.versions().iter().map(|v| v.feature).collect();
+    version_features.dedup();
+    for feature in version_features {
+        resolve_bool_ref(&ctx, file, feature, err, &mut ref_map);
+        if ref_map.get(&feature).is_some_and(|tgt| tgt.file != file) {
+            err.sym(
+                feature,
+                file,
+                30,
+                "versions of an imported feature belong to its own model",
+            );
+        }
+    }
     for i in file_data.all_imports() {
         if let Some(rs) = ctx
             .resolve(file, file_data.import_prefix(i))
@@ -236,6 +250,52 @@ fn select_type(flags: BitFlags<Type>) -> Type {
 /// First pass: Gather a set of all possible types for each equation side.
 /// Second pass: Pick a common type and resolve each expression with the choosen type
 /// We could simply forbid alias import and feature names but thats boring.
+fn resolve_bool_ref(
+    ctx: &TypeResolveContext,
+    file: FileID,
+    sym: Symbol,
+    err: &mut ErrorsAcc,
+    ref_map: &mut RefMap,
+) {
+    let rs = RootSymbol { sym, file };
+    let mut state = ResolveState::Unresolved;
+
+    for i in ctx.resolve_sym(rs) {
+        let ty = ctx.type_of(i).unwrap();
+        if ty == Type::Bool {
+            state = ResolveState::Resolved(i);
+            break;
+        } else {
+            state = ResolveState::WrongType {
+                expected: Type::Bool,
+                found: ty,
+            }
+        }
+    }
+    match state {
+        ResolveState::Unresolved => {
+            err.sym_with_type(
+                sym,
+                file,
+                30,
+                "unresolved reference",
+                ErrorType::ReferenceToString,
+            );
+        }
+        ResolveState::WrongType { expected, found } => {
+            err.sym(
+                sym,
+                file,
+                30,
+                format!("expected {:?} found {:?}", expected, found),
+            );
+        }
+        ResolveState::Resolved(tgt) => {
+            ref_map.insert(sym, tgt);
+        }
+    }
+}
+
 fn resolve_constraint(
     ctx: &TypeResolveContext,
     file: FileID,
@@ -244,45 +304,8 @@ fn resolve_constraint(
     ref_map: &mut RefMap,
 ) {
     match &constraint.content {
-        Constraint::Ref(sym) => {
-            let rs = RootSymbol { sym: *sym, file };
-            let mut state = ResolveState::Unresolved;
-
-            for i in ctx.resolve_sym(rs) {
-                let ty = ctx.type_of(i).unwrap();
-                if ty == Type::Bool {
-                    state = ResolveState::Resolved(i);
-                    break;
-                } else {
-                    state = ResolveState::WrongType {
-                        expected: Type::Bool,
-                        found: ty,
-                    }
-                }
-            }
-            match state {
-                ResolveState::Unresolved => {
-                    err.sym_with_type(
-                        *sym,
-                        file,
-                        30,
-                        "unresolved reference",
-                        ErrorType::ReferenceToString,
-                    );
-                }
-                ResolveState::WrongType { expected, found } => {
-                    err.sym(
-                        *sym,
-                        file,
-                        30,
-                        format!("expected {:?} found {:?}", expected, found),
-                    );
-                }
-                ResolveState::Resolved(tgt) => {
-                    ref_map.insert(*sym, tgt);
-                }
-            }
-        }
+        Constraint::Ref(sym) => resolve_bool_ref(ctx, file, *sym, err, ref_map),
+        Constraint::Version { feature, .. } => resolve_bool_ref(ctx, file, *feature, err, ref_map),
         Constraint::Logic { lhs, rhs, .. } => {
             stacker::maybe_grow(32 * 1024, 1024 * 1024, || {
                 resolve_constraint(ctx, file, lhs, err, ref_map)

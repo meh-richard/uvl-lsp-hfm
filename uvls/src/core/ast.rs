@@ -75,6 +75,7 @@ struct Ast {
     references: Vec<Reference>,
     groups: Vec<Group>,
     dirs: Vec<Dir>,
+    versions: Vec<Version>,
     structure: TreeMap,
     //The index is stored as a typed radix tree
     index: HashMap<(Symbol, Ustr, SymbolKind), Symbol>,
@@ -343,6 +344,9 @@ impl AstDocument {
     }
     pub fn constraints(&self) -> &[ConstraintDecl] {
         &self.ast.constraints
+    }
+    pub fn versions(&self) -> &[Version] {
+        &self.ast.versions
     }
 
     pub fn imports(&self) -> &[Import] {

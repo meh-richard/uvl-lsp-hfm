@@ -877,6 +877,121 @@ fn opt_equation(node: Node) -> Option<EquationOP> {
     }
 }
 
+fn version_name(state: &VisitorState, node: Node) -> Option<SymbolSpan> {
+    if node.is_missing() || node.has_error() {
+        return None;
+    }
+    let number = state.slice(node.child_by_field_name("number")?);
+    let name = match node.child_by_field_name("name") {
+        Some(word) => format!("{} {}", state.slice(word), number),
+        None => number.to_string(),
+    };
+    Some(SymbolSpan {
+        name: name.as_str().into(),
+        span: node.byte_range(),
+    })
+}
+
+fn opt_version_restriction(state: &VisitorState, node: Node) -> Option<VersionRestriction> {
+    let version = |field: &str| {
+        node.child_by_field_name(field)
+            .and_then(|version| version_name(state, version))
+    };
+    Some(match node.child_by_field_name("op").map(|op| op.kind()) {
+        Some(">") => VersionRestriction::Greater(version("version")?),
+        Some(">=") => VersionRestriction::GreaterEq(version("version")?),
+        Some("<") => VersionRestriction::Less(version("version")?),
+        Some("<=") => VersionRestriction::LessEq(version("version")?),
+        Some("-") => VersionRestriction::Range(version("begin")?, version("end")?),
+        _ => VersionRestriction::Exact(version("version")?),
+    })
+}
+
+fn visit_version_feature(state: &mut VisitorState, seen: &mut Vec<Vec<ustr::Ustr>>) {
+    let node = state.node();
+    let Some(header) = node.child_by_field_name("feature") else {
+        return;
+    };
+    let Some(path) = visit_children(state, |state| {
+        state.goto_field("feature");
+        opt_path(state)
+    }) else {
+        return;
+    };
+    if seen.contains(&path.names) {
+        state.push_error_node(header, 30, "versions of this feature are already defined");
+    }
+    seen.push(path.names.clone());
+    let mut cursor = node.walk();
+    let lines: Vec<Node> = node
+        .children(&mut cursor)
+        .filter(|child| child.kind() == "version_line")
+        .collect();
+    if lines.is_empty() {
+        state.push_error_node(header, 30, "expected a list of versions");
+        return;
+    }
+    let feature = state.add_ref_direct(path);
+    let first = state.ast.versions.len();
+    for (i, line) in lines.into_iter().enumerate() {
+        let mut pred = None;
+        match (i, line.child_by_field_name("from")) {
+            (0, Some(from)) => state.push_error_node(from, 30, "the first line has no predecessor"),
+            (0, None) => {}
+            (_, None) => state.push_error_node(
+                line,
+                30,
+                "expected from, only the first line starts without",
+            ),
+            (_, Some(from)) => {
+                if let Some(name) = version_name(state, from) {
+                    pred = state.ast.versions[first..]
+                        .iter()
+                        .position(|version| version.name.name == name.name)
+                        .map(|k| k + first);
+                    if pred.is_none() {
+                        state.push_error_node(from, 30, "unknown version, declare it above");
+                    }
+                }
+            }
+        }
+        let mut cursor = line.walk();
+        let versions: Vec<Node> = line
+            .children_by_field_name("version", &mut cursor)
+            .collect();
+        for version in versions {
+            let Some(name) = version_name(state, version) else {
+                continue;
+            };
+            if state.ast.versions[first..]
+                .iter()
+                .any(|known| known.name.name == name.name)
+            {
+                state.push_error_node(version, 30, format!("duplicate version {}", name.name));
+                continue;
+            }
+            state.ast.versions.push(Version {
+                feature,
+                name,
+                pred,
+            });
+            pred = Some(state.ast.versions.len() - 1);
+        }
+    }
+}
+
+fn visit_versions(state: &mut VisitorState) {
+    let mut seen = Vec::new();
+    loop {
+        if state.kind() == "version_feature" {
+            visit_version_feature(state, &mut seen);
+        }
+        if !state.goto_next_sibling() {
+            break;
+        }
+    }
+}
+
 fn opt_constraint(state: &mut VisitorState) -> Option<ConstraintDecl> {
     let span = state.node().byte_range();
     state.goto_named();
@@ -886,6 +1001,22 @@ fn opt_constraint(state: &mut VisitorState) -> Option<ConstraintDecl> {
             Some(Constraint::Ref(state.add_ref_direct(path)))
         }
         "bool" => Some(Constraint::Constant(visit_children(state, opt_bool))),
+        "versioned_ref" => {
+            let node = state.node();
+            if node.has_error() {
+                return None;
+            }
+            let path = visit_children(state, |state| {
+                state.goto_field("path");
+                opt_path(state)
+            })?;
+            let restriction = opt_version_restriction(state, node)?;
+            Some(Constraint::Version {
+                feature: state.add_ref_direct(path),
+                restriction,
+                conditional: node.child_by_field_name("condition").is_some(),
+            })
+        }
         "unary_expr" => {
             let op = state.child_by_name("op").unwrap().kind();
             visit_children(state, |state| {
@@ -1325,17 +1456,28 @@ fn visit_top_lvl(state: &mut VisitorState) {
                     top_level_order.pop();
                 }
                 _ => {
-                    state.push_error_blk_with_quickfix(60,"only namspaces, imports, includes, features and constraints are allowed here", ErrorType::AddIndentation);
+                    state.push_error_blk_with_quickfix(60,"only namspaces, imports, includes, features, versions and constraints are allowed here", ErrorType::AddIndentation);
                     visit_children(state, visit_features);
                     top_level_order.pop();
                 }
             }
         }
+        if state.kind() == "versions_blk" {
+            top_level_order.push(state.header().unwrap());
+            visit_children(state, visit_versions);
+        }
         if !state.goto_next_sibling() {
             break;
         }
     }
-    let fixed_order = ["namespace", "include", "imports", "features", "constraints"];
+    let fixed_order = [
+        "namespace",
+        "include",
+        "imports",
+        "features",
+        "versions",
+        "constraints",
+    ];
     for i in 1..top_level_order.iter().len() {
         let k = fixed_order
             .iter()
@@ -1398,5 +1540,161 @@ pub fn visit_root(source: Rope, tree: Tree, uri: Url, timestamp: Instant) -> Ast
         tree,
         timestamp,
         errors,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(source: &str) -> AstDocument {
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(tree_sitter_uvl::language()).unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        visit_root(
+            Rope::from_str(source),
+            tree,
+            Url::parse("file:///test.uvl").unwrap(),
+            Instant::now(),
+        )
+    }
+
+    fn errors(source: &str) -> Vec<(u32, String)> {
+        let mut errors: Vec<(u32, String)> = parse(source)
+            .errors
+            .iter()
+            .map(|e| (e.location.start.line, e.msg.clone()))
+            .collect();
+        errors.sort();
+        errors
+    }
+
+    fn versions(doc: &AstDocument) -> Vec<(String, Option<String>)> {
+        doc.versions()
+            .iter()
+            .map(|v| {
+                (
+                    v.name.name.to_string(),
+                    v.pred.map(|p| doc.versions()[p].name.name.to_string()),
+                )
+            })
+            .collect()
+    }
+
+    fn pair(name: &str, pred: Option<&str>) -> (String, Option<String>) {
+        (name.to_string(), pred.map(|p| p.to_string()))
+    }
+
+    #[test]
+    fn development_lines() {
+        let doc = parse(
+            "features\n\tTurtleBot\n\t\tmandatory\n\t\t\tEngine\nversions\n\tTurtleBot\n\t\t1.0, 1.1\n\t\tfrom 1.0: 2.0, 2.1\n\tEngine\n\t\t1.0, 1.1, Create   1.2\n\t\tfrom 1.1: Kobuki 1.0\n",
+        );
+        assert!(doc.errors.is_empty(), "{:?}", doc.errors);
+        assert_eq!(
+            versions(&doc),
+            vec![
+                pair("1.0", None),
+                pair("1.1", Some("1.0")),
+                pair("2.0", Some("1.0")),
+                pair("2.1", Some("2.0")),
+                pair("1.0", None),
+                pair("1.1", Some("1.0")),
+                pair("Create 1.2", Some("1.1")),
+                pair("Kobuki 1.0", Some("1.1")),
+            ]
+        );
+    }
+
+    #[test]
+    fn line_errors() {
+        assert_eq!(
+            errors("versions\n\tA\n\t\t1.0\n\t\t2.0\n"),
+            vec![(
+                3,
+                "expected from, only the first line starts without".into()
+            )]
+        );
+        assert_eq!(
+            errors("versions\n\tA\n\t\tfrom 1.0: 2.0\n"),
+            vec![(2, "the first line has no predecessor".into())]
+        );
+        assert_eq!(
+            errors("versions\n\tA\n\t\t1.0\n\t\tfrom 2.0: 3.0\n\t\tfrom 1.0: 2.0\n"),
+            vec![(3, "unknown version, declare it above".into())]
+        );
+        assert_eq!(
+            errors("versions\n\tA\n\t\t1.0, 1.1\n\t\tfrom 1.0: 1.1\n"),
+            vec![(3, "duplicate version 1.1".into())]
+        );
+    }
+
+    #[test]
+    fn feature_errors() {
+        assert_eq!(
+            errors("versions\n\tA\n\t\t1.0\n\tA\n\t\t2.0\n"),
+            vec![(3, "versions of this feature are already defined".into())]
+        );
+        assert_eq!(
+            errors("versions\n\tA\n\tB\n\t\t1.0\n"),
+            vec![(1, "expected a list of versions".into())]
+        );
+    }
+
+    #[test]
+    fn section_order() {
+        assert_eq!(
+            errors("versions\n\tA\n\t\t1.0\nfeatures\n\tA\n"),
+            vec![(
+                3,
+                "versions section comes before the features section".into()
+            )]
+        );
+        assert_eq!(
+            errors("versions\n\tA\n\t\t1.0\nversions\n\tB\n\t\t1.0\n"),
+            vec![(3, "duplicate versions section".into())]
+        );
+    }
+
+    #[test]
+    fn restrictions() {
+        let doc = parse("constraints\n\tA [>= 1.0] => ?s.B [1.0 - Kobuki 1.0]\n");
+        assert!(doc.errors.is_empty(), "{:?}", doc.errors);
+        let Constraint::Logic { lhs, rhs, .. } = &doc.constraints()[0].content else {
+            panic!("expected an implication");
+        };
+        match (&lhs.content, &rhs.content) {
+            (
+                Constraint::Version {
+                    restriction: VersionRestriction::GreaterEq(v),
+                    conditional: false,
+                    ..
+                },
+                Constraint::Version {
+                    feature,
+                    restriction: VersionRestriction::Range(begin, end),
+                    conditional: true,
+                },
+            ) => {
+                assert_eq!(v.name.as_str(), "1.0");
+                assert_eq!(begin.name.as_str(), "1.0");
+                assert_eq!(end.name.as_str(), "Kobuki 1.0");
+                assert_eq!(
+                    doc.path(*feature).to_vec(),
+                    vec![ustr::Ustr::from("s"), ustr::Ustr::from("B")]
+                );
+            }
+            other => panic!("unexpected constraints {:?}", other),
+        }
+        assert!(doc.constraints()[0].has_version());
+    }
+
+    #[test]
+    fn incomplete_lines_are_skipped() {
+        let doc = parse("versions\n\tA\n\t\t1, 2\n\t\tfrom 1:\n\tB\n\t\t1.0\n");
+        assert_eq!(
+            versions(&doc),
+            vec![pair("1", None), pair("2", Some("1")), pair("1.0", None)]
+        );
     }
 }

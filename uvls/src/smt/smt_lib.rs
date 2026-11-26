@@ -668,7 +668,10 @@ pub fn uvl2smt(module: &Module, config: &HashMap<ModuleSymbol, ConfigValue>) -> 
     }
     //encode constraints
     for (m, file) in module.instances() {
-        for c in file.all_constraints() {
+        for c in file
+            .all_constraints()
+            .filter(|c| !file.constraint(*c).unwrap().has_version())
+        {
             let expr = translate_constraint(file.constraint(c).unwrap(), m, &mut builder, file);
             builder.assert.push(Assert(
                 Some(AssertInfo(m.sym(c), AssertName::Constraint)),
@@ -712,7 +715,10 @@ pub fn uvl2smt_constraints(module: &Module) -> SMTModule {
     }
     //encode constraints
     for (m, file) in module.instances() {
-        for c in file.all_constraints() {
+        for c in file
+            .all_constraints()
+            .filter(|c| !file.constraint(*c).unwrap().has_version())
+        {
             let expr = translate_constraint(file.constraint(c).unwrap(), m, &mut builder, file);
             builder.assert.push(Assert(
                 Some(AssertInfo(m.sym(c), AssertName::Constraint)),
@@ -734,6 +740,9 @@ fn translate_constraint(
     ast: &AstDocument,
 ) -> Expr {
     match &decl.content {
+        ast::Constraint::Version { .. } => {
+            unreachable!("constraints with versions are not translated")
+        }
         ast::Constraint::Ref(sym) => {
             let module_symbol: ModuleSymbol = builder.module.resolve_value(m.sym(*sym));
             let resolved_ast = builder.module.file(module_symbol.instance);
