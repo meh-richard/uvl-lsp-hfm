@@ -1,0 +1,51 @@
+include
+	Boolean.versioning
+
+features
+	TurtleBot
+		mandatory
+			Engine
+			Movement
+				alternative
+					Keyboard
+					Gamepad
+					Autonomous
+		optional
+			Webservice
+			Detection
+				or
+					Bump
+					Infrared
+					Ultrasound
+
+versions
+	TurtleBot
+		1.0, 1.1
+		from 1.0: 2.0, 2.1
+	Engine
+		1.0, 1.1, Create 1.2
+		from 1.1: Kobuki 1.0
+	Movement
+		1.0, 1.1, 1.2, 2.0
+	Webservice
+		1.0, 1.1
+	Detection
+		1.0, 1.1
+	Keyboard
+		1.0
+	Gamepad
+		1.0, 2.0
+	Autonomous
+		1.0, 1.1, 2.0
+	Bump
+		1.0
+	Infrared
+		1.0, 2.0, 2.2
+	Ultrasound
+		0.8, 0.9, 1.0
+
+constraints
+	TurtleBot [>= 2.0] => ?Webservice [>= 1.1]
+	TurtleBot [>= 2.0] => Engine [>= Kobuki 1.0]
+	Autonomous => Detection
+	Keyboard | Gamepad => Webservice
