@@ -878,18 +878,7 @@ fn opt_equation(node: Node) -> Option<EquationOP> {
 }
 
 fn version_name(state: &VisitorState, node: Node) -> Option<SymbolSpan> {
-    if node.is_missing() || node.has_error() {
-        return None;
-    }
-    let number = state.slice(node.child_by_field_name("number")?);
-    let name = match node.child_by_field_name("name") {
-        Some(word) => format!("{} {}", state.slice(word), number),
-        None => number.to_string(),
-    };
-    Some(SymbolSpan {
-        name: name.as_str().into(),
-        span: node.byte_range(),
-    })
+    parse_version(node, state)
 }
 
 fn opt_version_restriction(state: &VisitorState, node: Node) -> Option<VersionRestriction> {
@@ -935,6 +924,7 @@ fn visit_version_feature(state: &mut VisitorState, seen: &mut Vec<Vec<ustr::Ustr
     let first = state.ast.versions.len();
     for (i, line) in lines.into_iter().enumerate() {
         let mut pred = None;
+        let mut from_span = None;
         match (i, line.child_by_field_name("from")) {
             (0, Some(from)) => state.push_error_node(from, 30, "the first line has no predecessor"),
             (0, None) => {}
@@ -951,6 +941,8 @@ fn visit_version_feature(state: &mut VisitorState, seen: &mut Vec<Vec<ustr::Ustr
                         .map(|k| k + first);
                     if pred.is_none() {
                         state.push_error_node(from, 30, "unknown version, declare it above");
+                    } else {
+                        from_span = Some(from.byte_range());
                     }
                 }
             }
@@ -974,6 +966,7 @@ fn visit_version_feature(state: &mut VisitorState, seen: &mut Vec<Vec<ustr::Ustr
                 feature,
                 name,
                 pred,
+                from: from_span.take(),
             });
             pred = Some(state.ast.versions.len() - 1);
         }
@@ -1708,6 +1701,18 @@ mod tests {
         assert!(!doc.version_precedes(index("TurtleBot", "1.1"), index("TurtleBot", "2.1")));
         assert!(!doc.version_precedes(index("TurtleBot", "2.1"), index("TurtleBot", "1.0")));
         assert!(!doc.version_precedes(index("Engine", "Create 1.2"), index("Engine", "Kobuki 1.0")));
+    }
+
+    #[test]
+    fn predecessor_spans() {
+        let source = "versions\n\tA\n\t\t1.0, 1.1\n\t\tfrom 1.0: 2.0, 2.1\n";
+        let doc = parse(source);
+        let from: Vec<Option<&str>> = doc
+            .versions()
+            .iter()
+            .map(|v| v.from.clone().map(|span| &source[span]))
+            .collect();
+        assert_eq!(from, vec![None, None, Some("1.0"), None]);
     }
 
     #[test]

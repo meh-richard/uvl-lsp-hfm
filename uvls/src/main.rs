@@ -319,6 +319,17 @@ impl LanguageServer for Backend {
         info!("[RENAME] params: {:?}", params);
         let uri = &params.text_document_position.text_document.uri;
         if let Some((draft, root)) = self.snapshot(uri, true).await? {
+            if let Some(result) = ide::location::rename_version(
+                &root,
+                &draft,
+                uri,
+                &params.text_document_position.position,
+                &params.new_name,
+            ) {
+                return result
+                    .map(Some)
+                    .map_err(tower_lsp::jsonrpc::Error::invalid_params);
+            }
             Ok(ide::location::rename(
                 &root,
                 &draft,

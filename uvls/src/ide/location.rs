@@ -2,6 +2,7 @@ use crate::core::*;
 use crate::ide::completion::*;
 use hashbrown::HashMap;
 use log::info;
+use regex::Regex;
 use ropey::Rope;
 use tower_lsp::lsp_types::*;
 use tree_sitter::Node;
@@ -138,6 +139,17 @@ pub fn find_text_object_impl(
                 _ => None,
             }
         }
+        Section::Versions => {
+            let (path, p_node) = longest_path(node, source)?;
+            if p_node.parent()?.kind() != "version_feature" {
+                return None;
+            }
+            Some(TextObject {
+                kind: TextObjectKind::FeatureReference,
+                selected_segment: path.segment(offset),
+                path,
+            })
+        }
         _ => None,
     }
 }
@@ -170,6 +182,93 @@ pub fn find_text_object(
     }
 }
 
+fn version_at(
+    draft: &Draft,
+    pos: &Position,
+    file: FileID,
+    root: &Snapshot,
+) -> Option<(FileID, usize)> {
+    let Draft::UVL { source, tree, .. } = draft else {
+        return None;
+    };
+    let start = source.try_char_to_byte(char_offset(pos, source)).ok()?;
+    let mut node = tree
+        .root_node()
+        .named_descendant_for_byte_range(start, start + 1)?;
+    while node.kind() != "version" {
+        if matches!(
+            node.kind(),
+            "version_line" | "versioned_ref" | "version_feature" | "source_file"
+        ) {
+            return None;
+        }
+        node = node.parent()?;
+    }
+    let name = parse_version(node, source)?.name;
+    let context = node.parent()?;
+    let (target, feature) = match context.kind() {
+        "version_line" => {
+            let header = context.parent()?.child_by_field_name("feature")?;
+            let path = parse_path(header, source)?;
+            if path.len() != 1 {
+                return None;
+            }
+            (file, path.names[0])
+        }
+        "versioned_ref" => {
+            let path = parse_path(context.child_by_field_name("path")?, source)?;
+            let feature = root
+                .resolve(file, &path.names)
+                .find(|s| matches!(s.sym, Symbol::Feature(..)))?;
+            (feature.file, root.file(feature.file).name(feature.sym)?)
+        }
+        _ => return None,
+    };
+    let doc = root.file(target);
+    let index = doc
+        .versions_of(feature)
+        .into_iter()
+        .find(|&i| doc.versions()[i].name.name == name)?;
+    Some((target, index))
+}
+
+fn version_usages(root: &Snapshot, file: FileID, index: usize) -> Vec<(FileID, Span)> {
+    let doc = root.file(file);
+    let version = &doc.versions()[index];
+    let mut usages: Vec<(FileID, Span)> = doc
+        .versions()
+        .iter()
+        .filter(|v| v.pred == Some(index))
+        .filter_map(|v| v.from.clone())
+        .map(|span| (file, span))
+        .collect();
+    let Some(feature) = root
+        .resolve(file, doc.path(version.feature))
+        .find(|s| matches!(s.sym, Symbol::Feature(..)))
+    else {
+        return usages;
+    };
+    for src_id in root.fs().recursive_imported(file) {
+        let src = root.file(src_id);
+        for constraint in src.constraints() {
+            for (reference, restriction) in constraint.version_restrictions() {
+                if !root
+                    .resolve(src_id, src.path(reference))
+                    .any(|s| s == feature)
+                {
+                    continue;
+                }
+                for used in restriction.versions() {
+                    if used.name == version.name.name {
+                        usages.push((src_id, used.span.clone()));
+                    }
+                }
+            }
+        }
+    }
+    usages
+}
+
 fn find_definitions(
     root: &Snapshot,
     draft: &Draft,
@@ -177,6 +276,12 @@ fn find_definitions(
     uri: &Url,
 ) -> Option<Vec<RootSymbol>> {
     let file_id = root.file_id(uri)?;
+    if let Some((file, index)) = version_at(draft, pos, file_id, root) {
+        return Some(vec![RootSymbol {
+            file,
+            sym: Symbol::Version(index),
+        }]);
+    }
     let obj = find_text_object(draft, pos, file_id, root)?;
     info!("{:?}", obj);
 
@@ -400,6 +505,23 @@ fn find_references_symboles(
     uri: &Url,
 ) -> Option<Vec<(RootSymbol, Option<Range>)>> {
     let file_id = root.file_id(uri)?;
+    if let Some((target, index)) = version_at(draft, pos, file_id, root) {
+        return Some(
+            version_usages(root, target, index)
+                .into_iter()
+                .map(|(src, span)| {
+                    let range = lsp_range(span, &root.file(src).source);
+                    (
+                        RootSymbol {
+                            file: src,
+                            sym: Symbol::Version(index),
+                        },
+                        range,
+                    )
+                })
+                .collect(),
+        );
+    }
     let file = root.file(file_id);
     let obj = find_text_object(draft, pos, file_id, root)?;
     match obj.kind {
@@ -446,12 +568,42 @@ pub fn find_references(
                     }),
                     _ => Some(Location {
                         uri: file.uri.clone(),
-                        range: range.unwrap_or(file.lsp_range(sym.sym).unwrap_or_default()),
+                        range: range.unwrap_or_else(|| file.lsp_range(sym.sym).unwrap_or_default()),
                     }),
                 }
             })
             .collect(),
     )
+}
+
+pub fn rename_version(
+    root: &Snapshot,
+    draft: &Draft,
+    uri: &Url,
+    pos: &Position,
+    new_name: &str,
+) -> Option<std::result::Result<WorkspaceEdit, String>> {
+    let file_id = root.file_id(uri)?;
+    let (target, index) = version_at(draft, pos, file_id, root)?;
+    let doc = root.file(target);
+    let name = new_name.split_whitespace().collect::<Vec<_>>().join(" ");
+    let shape =
+        Regex::new(r"^([_\p{XID_Start}][_\p{XID_Continue}]* )?v?[0-9]+(\.[0-9]+)*$").unwrap();
+    if !shape.is_match(&name) || name.starts_with("from ") {
+        return Some(Err(format!(
+            "{} is not a valid version, expected a version number like 1.0 or a word and a number like Kobuki 1.0",
+            new_name
+        )));
+    }
+    let feature = doc.path(doc.versions()[index].feature);
+    let taken =
+        doc.versions().iter().enumerate().any(|(i, v)| {
+            i != index && v.name.name.as_str() == name && doc.path(v.feature) == feature
+        });
+    if taken {
+        return Some(Err(format!("version {} already exists", name)));
+    }
+    Some(Ok(rename(root, draft, uri, pos, name).unwrap_or_default()))
 }
 
 pub fn rename(

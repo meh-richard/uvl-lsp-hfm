@@ -165,6 +165,7 @@ impl Ast {
             Symbol::Constraint(i) => Some(self.constraints[i].span.clone()),
             Symbol::LangLvl(i) => Some(self.includes[i].span.clone()),
             Symbol::Keyword(i) => Some(self.keywords[i].span.clone()),
+            Symbol::Version(i) => self.versions.get(i).map(|v| v.name.span.clone()),
             _ => None,
         }
     }

@@ -228,6 +228,7 @@ pub struct Version {
     pub feature: Symbol,
     pub name: SymbolSpan,
     pub pred: Option<usize>,
+    pub from: Option<Span>,
 }
 
 #[derive(Clone, Debug)]
@@ -282,11 +283,16 @@ pub struct ConstraintDecl {
 }
 
 impl ConstraintDecl {
-    pub fn has_version(&self) -> bool {
+    pub fn version_restrictions(&self) -> Vec<(Symbol, &VersionRestriction)> {
+        let mut found = Vec::new();
         let mut stack = vec![self];
         while let Some(constraint) = stack.pop() {
             match &constraint.content {
-                Constraint::Version { .. } => return true,
+                Constraint::Version {
+                    feature,
+                    restriction,
+                    ..
+                } => found.push((*feature, restriction)),
                 Constraint::Logic { lhs, rhs, .. } => {
                     stack.push(lhs);
                     stack.push(rhs);
@@ -295,7 +301,10 @@ impl ConstraintDecl {
                 _ => {}
             }
         }
-        false
+        found
+    }
+    pub fn has_version(&self) -> bool {
+        !self.version_restrictions().is_empty()
     }
 }
 
@@ -338,6 +347,7 @@ pub enum Symbol {
     Import(usize),
     LangLvl(usize),
     Dir(usize),
+    Version(usize),
     Root,
 }
 impl Symbol {
@@ -350,6 +360,7 @@ impl Symbol {
             | Self::Group(id)
             | Self::LangLvl(id)
             | Self::Dir(id)
+            | Self::Version(id)
             | Self::Import(id) => *id,
             _ => panic!(),
         }

@@ -103,6 +103,21 @@ pub fn parse_name<S: SymbolSlice>(node: Node, source: &S) -> Option<SymbolSpan> 
     }
 }
 
+pub fn parse_version<S: SymbolSlice>(node: Node, source: &S) -> Option<SymbolSpan> {
+    if node.kind() != "version" || node.is_missing() || node.has_error() {
+        return None;
+    }
+    let number = source.slice(node.child_by_field_name("number")?);
+    let name = match node.child_by_field_name("name") {
+        Some(word) => format!("{} {}", source.slice(word), number),
+        None => number.to_string(),
+    };
+    Some(SymbolSpan {
+        name: name.as_str().into(),
+        span: node.byte_range(),
+    })
+}
+
 pub fn parse_path<S: SymbolSlice>(node: Node, source: &S) -> Option<Path> {
     if let Some(name) = parse_name(node, source) {
         Some(Path {
