@@ -15,6 +15,7 @@ static EXTRACT_SYNTAX_HIGHLIGHTING_SRC: &str = r#"
  "true"
  "false"
  "cardinality"
+ "from"
  ]@keyword
 (comment) @comment
 
@@ -26,12 +27,15 @@ static EXTRACT_SYNTAX_HIGHLIGHTING_SRC: &str = r#"
 
 (number) @number
 
+(version) @number
+
 [
     (group_mode)
     (constraints)
     (include)
     (features)
     (imports)
+    (versions)
 ] @keyword
 
 [
@@ -48,6 +52,9 @@ static EXTRACT_SYNTAX_HIGHLIGHTING_SRC: &str = r#"
     "/"
     "!"
     ".."
+    ">="
+    "<="
+    "?"
 ] @operator
 
 (function op:(_) @function)

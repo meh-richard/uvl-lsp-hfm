@@ -163,6 +163,32 @@ fn add_range_of_current_level(collapse: &mut VisitorCollapse) {
     collapse.add_range(start, collapse.line());
 }
 
+fn last_line(mut node: Node, source: &Rope) -> usize {
+    while node.named_child_count() > 0 {
+        node = node.named_child(node.named_child_count() - 1).unwrap();
+    }
+    source.byte_to_line(node.start_byte())
+}
+
+fn visit_versions(collapse: &mut VisitorCollapse) {
+    let block = collapse.node();
+    let mut cursor = block.walk();
+    let nodes: Vec<Node> = std::iter::once(block)
+        .chain(
+            block
+                .named_children(&mut cursor)
+                .filter(|node| node.kind() == "version_feature"),
+        )
+        .collect();
+    for node in nodes {
+        let start = collapse.source.byte_to_line(node.start_byte());
+        let end = last_line(node, collapse.source);
+        if start < end {
+            collapse.add_range(start, end);
+        }
+    }
+}
+
 fn visit_top_lvl(collapse: &mut VisitorCollapse) {
     let mut top_level_order: Vec<Node> = Vec::new();
     loop {
@@ -176,6 +202,9 @@ fn visit_top_lvl(collapse: &mut VisitorCollapse) {
                 "features" => visit_children(collapse, visit_features),
                 _ => {}
             }
+        }
+        if collapse.kind() == "versions_blk" {
+            visit_versions(collapse);
         }
         if !collapse.goto_next_sibling() {
             break;
