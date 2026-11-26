@@ -108,8 +108,24 @@ pub enum CompletionEnv {
     ConfigEntryKey,
     ConfigRootKey,
     ConfigModelPath,
-    ConfigEntryValue { target: Vec<Ustr> },
-    Aggregate { context: Option<Path> },
+    ConfigEntryValue {
+        target: Vec<Ustr>,
+    },
+    Aggregate {
+        context: Option<Path>,
+    },
+    VersionFeature,
+    VersionLine,
+    VersionPredecessor {
+        feature: Ustr,
+        line_start: usize,
+    },
+    VersionRestriction {
+        feature: Vec<Ustr>,
+        operators: bool,
+        after: Option<Ustr>,
+    },
+    VersionConditional,
 }
 impl CompletionEnv {
     //FIlter completions according to kind
@@ -144,6 +160,7 @@ pub enum Section {
     TopLevel,
     Unknown,
     Attribute,
+    Versions,
 }
 pub fn find_section(node: Node) -> Section {
     match node.kind() {
@@ -155,6 +172,7 @@ pub fn find_section(node: Node) -> Section {
             _ => find_section(node.parent().unwrap()),
         },
         "source_file" => Section::TopLevel,
+        "versions_blk" | "version_feature" | "version_line" => Section::Versions,
         "attribute_constraint" | "attribute_constraints" => Section::Constraints,
         "binary_expr" | "unary_expr" | "nested_expr" | "function" => Section::Constraints,
         "attribute_value" => Section::Attribute,
@@ -361,6 +379,7 @@ fn estimate_env(node: Node, source: &Rope, pos: &Position) -> Option<CompletionE
             }
         }
         Section::Attribute => Some(CompletionEnv::SomeName),
+        Section::Versions => None,
         Section::Unknown => Some(CompletionEnv::Any),
     }
 }
@@ -451,11 +470,134 @@ pub fn longest_path<'a>(node: Node<'a>, source: &Rope) -> Option<(Path, Node<'a>
         parse::parse_or_lang_lvl(node, source).map(|p| (p, node))
     }
 }
+fn section_by_indentation(source: &Rope, line: usize) -> Section {
+    let header = (0..line)
+        .rev()
+        .map(|i| source.line(i).to_string())
+        .find(|l| {
+            !l.trim().is_empty() && !l.starts_with(char::is_whitespace) && !l.starts_with("//")
+        });
+    match header.as_deref().and_then(|l| l.split_whitespace().next()) {
+        Some("constraints") => Section::Constraints,
+        Some("versions") => Section::Versions,
+        Some("features") => Section::Features,
+        _ => Section::Unknown,
+    }
+}
+
+fn version_query(source: &Rope, tree: &Tree, pos: &Position) -> Option<CompletionQuery> {
+    let line_index = pos.line as usize;
+    let line = source.get_line(line_index)?;
+    let text: String = line
+        .slice(..line.utf16_cu_to_char(pos.character as usize))
+        .into();
+    let line_start = source.line_to_byte(line_index);
+    let (offset, node) = position_to_node(source, tree, pos);
+    let query = |env: CompletionEnv, start: usize| {
+        Some(CompletionQuery {
+            offset,
+            prefix: Vec::new(),
+            postfix: text[start..].into(),
+            env,
+            format: CompletionFormatter::UVL {
+                postfix_range: lsp_range(line_start + start..line_start + text.len(), source)?,
+            },
+        })
+    };
+    let section = match find_section(node) {
+        Section::Unknown | Section::TopLevel => section_by_indentation(source, line_index),
+        section => section,
+    };
+    match section {
+        Section::Constraints => {
+            let restriction = Regex::new(r"((?:\w+\.)*\w+)\s*\[([^\[\]]*)$").unwrap();
+            if let Some(m) = restriction
+                .captures(&text)
+                .filter(|m| &m[1] != "constraints")
+            {
+                let feature: Vec<Ustr> = m[1].split('.').map(Ustr::from).collect();
+                let inner = m.get(2).unwrap();
+                let operator = Regex::new(r"^\s*(>=|<=|>|<)\s*").unwrap();
+                let range = Regex::new(r"^\s*(.*?\S)\s+-\s*").unwrap();
+                if let Some(op) = operator.find(inner.as_str()) {
+                    return query(
+                        CompletionEnv::VersionRestriction {
+                            feature,
+                            operators: false,
+                            after: None,
+                        },
+                        inner.start() + op.end(),
+                    );
+                }
+                if let Some(begin) = range.captures(inner.as_str()) {
+                    return query(
+                        CompletionEnv::VersionRestriction {
+                            feature,
+                            operators: false,
+                            after: Some(begin[1].into()),
+                        },
+                        inner.start() + begin.get(0).unwrap().end(),
+                    );
+                }
+                let typed = inner.as_str().trim_start();
+                return query(
+                    CompletionEnv::VersionRestriction {
+                        feature,
+                        operators: typed.is_empty(),
+                        after: None,
+                    },
+                    inner.end() - typed.len(),
+                );
+            }
+            let conditional = Regex::new(r"\?\s*((?:\w+\.)*\w*)$").unwrap();
+            let m = conditional.captures(&text)?;
+            query(CompletionEnv::VersionConditional, m.get(1).unwrap().start())
+        }
+        Section::Versions => {
+            let indent = |l: &str| l.len() - l.trim_start().len();
+            let current = indent(&text);
+            if current == 0 {
+                return None;
+            }
+            let above: Vec<String> = (0..line_index)
+                .rev()
+                .map(|i| source.line(i).to_string())
+                .filter(|l| !l.trim().is_empty())
+                .collect();
+            let parent = above.iter().position(|l| indent(l) < current)?;
+            if indent(&above[parent]) == 0 {
+                return query(CompletionEnv::VersionFeature, current);
+            }
+            let rest = &text[current..];
+            if let Some(from) = Regex::new(r"^from\s+").unwrap().find(rest) {
+                if rest.contains(':') {
+                    return None;
+                }
+                return query(
+                    CompletionEnv::VersionPredecessor {
+                        feature: above[parent].trim().into(),
+                        line_start,
+                    },
+                    current + from.end(),
+                );
+            }
+            if parent > 0 && "from".starts_with(rest) {
+                return query(CompletionEnv::VersionLine, current);
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 //"smart" completion, find context around the cursor
 fn estimate_context(pos: &Position, draft: &Draft) -> Option<CompletionQuery> {
     match draft {
         Draft::JSON { source, tree, .. } => config::completion_query(source, tree, pos),
         Draft::UVL { source, tree, .. } => {
+            if let Some(query) = version_query(source, tree, pos) {
+                return Some(query);
+            }
             let (offset, edit_node) = position_to_node(source, tree, pos);
             if let (Some((path, path_node)), CompletionOffset::Continuous) =
                 (longest_path(edit_node, source), offset)
@@ -823,6 +965,7 @@ enum CompletionKind {
     Keyword,
     Folder,
     File,
+    Version,
     DontCare,
 }
 impl From<Type> for CompletionKind {
@@ -913,8 +1056,20 @@ fn add_top_lvl_keywords(query: &str, top: &mut TopN<CompletionOpt>, w: f32) {
             "imports\n\t".into(),
             "constraints\n\t".into(),
             "include\n\t".into(),
+            "versions\n\t".into(),
         ],
     );
+}
+
+fn add_version(top: &mut TopN<CompletionOpt>, ctx: &CompletionQuery, name: Ustr) {
+    top.push(CompletionOpt::new(
+        CompletionKind::Version,
+        name,
+        name.as_str().into(),
+        0,
+        TextOP::Put(name.as_str().into()),
+        ctx,
+    ));
 }
 
 fn add_group_keywords(query: &str, top: &mut TopN<CompletionOpt>, w: f32) {
@@ -1422,6 +1577,106 @@ fn compute_completions_impl(
                 completion_symbol(&snapshot, origin, &ctx, &mut top, vec![Type::Real]);
             }
         }
+        CompletionEnv::VersionFeature => {
+            let doc = snapshot.file(origin);
+            let listed: Vec<Ustr> = doc
+                .versions()
+                .iter()
+                .filter_map(|v| doc.path(v.feature).first().copied())
+                .collect();
+            for name in doc.all_features().filter_map(|f| doc.name(f)).unique() {
+                if !listed.contains(&name) {
+                    top.push(CompletionOpt::new(
+                        CompletionKind::Feature,
+                        name,
+                        name.as_str().into(),
+                        0,
+                        TextOP::Put(name.as_str().into()),
+                        ctx,
+                    ));
+                }
+            }
+        }
+        CompletionEnv::VersionLine => add_keywords(&ctx.postfix, &mut top, 2.0, ["from ".into()]),
+        CompletionEnv::VersionPredecessor {
+            feature,
+            line_start,
+        } => {
+            let doc = snapshot.file(origin);
+            for i in doc.versions_of(*feature) {
+                let version = &doc.versions()[i];
+                if version.name.span.start < *line_start {
+                    add_version(&mut top, ctx, version.name.name);
+                }
+            }
+        }
+        CompletionEnv::VersionRestriction {
+            feature,
+            operators,
+            after,
+        } => {
+            if *operators {
+                add_keywords(
+                    &ctx.postfix,
+                    &mut top,
+                    2.0,
+                    [">= ".into(), "> ".into(), "<= ".into(), "< ".into()],
+                );
+            }
+            let target = snapshot
+                .resolve(origin, feature)
+                .find(|s| matches!(s.sym, Symbol::Feature(..)));
+            if let Some(target) = target {
+                let doc = snapshot.file(target.file);
+                if let Some(name) = doc.name(target.sym) {
+                    let known = doc.versions_of(name);
+                    let begin = after.and_then(|after| {
+                        known
+                            .iter()
+                            .copied()
+                            .find(|&i| doc.versions()[i].name.name == after)
+                    });
+                    for i in known {
+                        let successor = begin.is_some_and(|b| b != i && doc.version_precedes(b, i));
+                        if after.is_none() || successor {
+                            add_version(&mut top, ctx, doc.versions()[i].name.name);
+                        }
+                    }
+                }
+            }
+        }
+        CompletionEnv::VersionConditional => {
+            let doc = snapshot.file(origin);
+            let mut names: Vec<CompactString> = doc
+                .versions()
+                .iter()
+                .map(|v| make_path(doc.path(v.feature).iter()))
+                .collect();
+            for import in doc.all_imports() {
+                let prefix = doc.import_prefix(import);
+                let root = snapshot
+                    .resolve(origin, prefix)
+                    .find(|s| matches!(s.sym, Symbol::Root));
+                if let Some(root) = root {
+                    let sub = snapshot.file(root.file);
+                    names.extend(
+                        sub.versions()
+                            .iter()
+                            .map(|v| make_path(prefix.iter().chain(sub.path(v.feature).iter()))),
+                    );
+                }
+            }
+            for name in names.into_iter().unique() {
+                top.push(CompletionOpt::new(
+                    CompletionKind::Feature,
+                    name.as_str().into(),
+                    name.clone(),
+                    0,
+                    TextOP::Put(name),
+                    ctx,
+                ));
+            }
+        }
         CompletionEnv::ConfigRootKey => add_keywords(
             &ctx.postfix,
             &mut top,
@@ -1482,6 +1737,7 @@ pub fn compute_completions(
                     CompletionKind::Namespace => CompletionItemKind::MODULE,
                     CompletionKind::File => CompletionItemKind::FILE,
                     CompletionKind::Folder => CompletionItemKind::FOLDER,
+                    CompletionKind::Version => CompletionItemKind::VALUE,
                     _ => CompletionItemKind::TEXT,
                 }),
                 insert_text_format: Some(InsertTextFormat::SNIPPET),
@@ -1505,6 +1761,126 @@ pub fn compute_completions(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn version_env(marked: &str) -> Option<(CompletionEnv, String)> {
+        let cursor = marked.find('|').unwrap();
+        let source = marked.replacen('|', "", 1);
+        let line = source[..cursor].matches('\n').count() as u32;
+        let character = source[..cursor]
+            .rsplit('\n')
+            .next()
+            .unwrap()
+            .encode_utf16()
+            .count() as u32;
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(tree_sitter_uvl::language()).unwrap();
+        let tree = parser.parse(&source, None).unwrap();
+        version_query(
+            &Rope::from_str(&source),
+            &tree,
+            &Position { line, character },
+        )
+        .map(|query| (query.env, query.postfix.to_string()))
+    }
+
+    const BLOCK: &str = "features\n\tA\n\tB\nversions\n\tA\n\t\t1.0, 1.1\n";
+
+    #[test]
+    fn versions_at_top_level() {
+        let mut top = TopN::new(10);
+        add_top_lvl_keywords("", &mut top, 1.0);
+        assert!(top
+            .into_sorted_vec()
+            .iter()
+            .any(|opt| opt.label.starts_with("versions")));
+    }
+
+    #[test]
+    fn version_feature_level() {
+        assert_eq!(
+            version_env(&format!("{BLOCK}\t|")),
+            Some((CompletionEnv::VersionFeature, "".into()))
+        );
+        assert_eq!(
+            version_env(&format!("{BLOCK}\tB|")),
+            Some((CompletionEnv::VersionFeature, "B".into()))
+        );
+    }
+
+    #[test]
+    fn version_first_line() {
+        assert_eq!(version_env("versions\n\tA\n\t\t|"), None);
+    }
+
+    #[test]
+    fn version_line_start() {
+        assert_eq!(
+            version_env(&format!("{BLOCK}\t\t|")),
+            Some((CompletionEnv::VersionLine, "".into()))
+        );
+        assert_eq!(
+            version_env(&format!("{BLOCK}\t\tfr|")),
+            Some((CompletionEnv::VersionLine, "fr".into()))
+        );
+    }
+
+    #[test]
+    fn version_predecessor() {
+        assert_eq!(
+            version_env(&format!("{BLOCK}\t\tfrom 1|")),
+            Some((
+                CompletionEnv::VersionPredecessor {
+                    feature: "A".into(),
+                    line_start: BLOCK.len(),
+                },
+                "1".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn version_restriction() {
+        let env = |operators, after: Option<&str>| CompletionEnv::VersionRestriction {
+            feature: vec!["A".into()],
+            operators,
+            after: after.map(Ustr::from),
+        };
+        assert_eq!(
+            version_env("constraints\n\tA [|"),
+            Some((env(true, None), "".into()))
+        );
+        assert_eq!(
+            version_env("constraints\n\tA [>= Kob|"),
+            Some((env(false, None), "Kob".into()))
+        );
+        assert_eq!(
+            version_env("constraints\n\tA [1.0 - |"),
+            Some((env(false, Some("1.0")), "".into()))
+        );
+        assert_eq!(
+            version_env("constraints\n\tB => A [Kobuki 1|"),
+            Some((env(false, None), "Kobuki 1".into()))
+        );
+    }
+
+    #[test]
+    fn version_conditional() {
+        assert_eq!(
+            version_env("constraints\n\tB => ?|"),
+            Some((CompletionEnv::VersionConditional, "".into()))
+        );
+        assert_eq!(
+            version_env("constraints\n\tB => ?s.A|"),
+            Some((CompletionEnv::VersionConditional, "s.A".into()))
+        );
+    }
+
+    #[test]
+    fn no_version_context_elsewhere() {
+        assert_eq!(version_env("features\n\tA cardinality [|"), None);
+        assert_eq!(version_env("constraints\n\tA => |"), None);
+        assert_eq!(version_env("features\n\tA {constraints [B => |"), None);
+    }
     #[test]
     fn test_top_n() {
         let mut top = TopN::new(10);
